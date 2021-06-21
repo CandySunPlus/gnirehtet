@@ -53,6 +53,7 @@ impl Ipv4HeaderData {
             header_length: (raw[0] & 0xf) << 2,
             total_length: BigEndian::read_u16(&raw[2..4]),
             protocol: match raw[9] {
+                1 => Protocol::Icmp,
                 6 => Protocol::Tcp,
                 17 => Protocol::Udp,
                 _ => Protocol::Other,

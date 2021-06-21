@@ -136,6 +136,7 @@ impl Router {
                 ipv4_header,
                 transport_header,
             )?),
+            Protocol::Icmp => Ok(()),
             p => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Unsupported protocol: {:?}", p),
