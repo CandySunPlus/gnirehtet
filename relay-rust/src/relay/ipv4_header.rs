@@ -41,6 +41,7 @@ pub struct Ipv4HeaderData {
 pub enum Protocol {
     Tcp,
     Udp,
+    Icmp,
     Other,
 }
 
