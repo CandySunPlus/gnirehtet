@@ -43,5 +43,6 @@ mod transport_header;
 mod tunnel_server;
 mod udp_connection;
 mod udp_header;
+mod socket;
 mod icmp_connection;
 mod icmp_header;

@@ -1,0 +1,170 @@
+use mio::{Evented, Poll, PollOpt, Ready, Token};
+use std::{io, mem::MaybeUninit};
+
+use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
+
+pub struct Socket {
+    socket: Socket2,
+}
+impl Socket {
+    pub fn new(domain: Domain, ty: Type, protocol: Protocol) -> io::Result<Self> {
+        let socket = Socket2::new(domain, ty, Some(protocol))?;
+
+        socket.set_nonblocking(true)?;
+
+        Ok(Self { socket })
+    }
+
+    pub fn send_to(&self, buf: &[u8], target: &SockAddr) -> io::Result<usize> {
+        self.socket.send_to(buf, target)
+    }
+
+    pub fn recv(&self, buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
+        self.socket.recv(buf)
+    }
+
+    pub fn bind(&self, addr: &SockAddr) -> io::Result<()> {
+        self.socket.bind(addr)
+    }
+
+    pub fn connect(&self, addr: &SockAddr) -> io::Result<()> {
+        self.socket.connect(addr)
+    }
+
+    fn send(&self, buf: &[u8]) -> io::Result<usize> {
+        self.socket.send(buf)
+    }
+
+}
+
+impl DatagramSender for Socket{
+    fn send(&mut self, buf: &[u8]) -> io::Result<usize> { 
+        self.send(buf)
+    }
+}
+
+#[cfg(unix)]
+use mio::unix::EventedFd;
+#[cfg(unix)]
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+impl Evented for Socket {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        EventedFd(&self.as_raw_fd()).register(poll, token, interest, opts)
+    }
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        EventedFd(&self.as_raw_fd()).reregister(poll, token, interest, opts)
+    }
+    fn deregister(&self, poll: &mio::Poll) -> io::Result<()> {
+        EventedFd(&self.as_raw_fd()).deregister(poll)
+    }
+}
+
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+impl FromRawFd for Socket {
+    unsafe fn from_raw_fd(fd: RawFd) -> Socket {
+        Socket {
+            socket: Socket2::from_raw_fd(fd),
+        }
+    }
+}
+
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+impl IntoRawFd for Socket {
+    fn into_raw_fd(self) -> RawFd {
+        self.socket.into_raw_fd()
+    }
+}
+
+#[cfg(all(unix, not(target_os = "fuchsia")))]
+impl AsRawFd for Socket {
+    fn as_raw_fd(&self) -> RawFd {
+        self.socket.as_raw_fd()
+    }
+}
+
+#[cfg(windows)]
+use std::os::windows::io::{FromRawSocket, IntoRawSocket};
+
+use super::datagram::DatagramSender;
+
+#[cfg(windows)]
+impl Socket {
+    fn post_register(&self, interest: Ready, me: &mut Inner) {
+        if interest.is_readable() {
+            //We use recv_from here since it is well specified for both
+            //connected and non-connected sockets and we can discard the address
+            //when calling recv().
+            self.imp.schedule_read_from(me);
+        }
+        // See comments in TcpSocket::post_register for what's going on here
+        if interest.is_writable() {
+            if let State::Empty = me.write {
+                self.imp.add_readiness(me, Ready::writable());
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Evented for Socket {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        let mut me = self.socket.inner;
+        me.iocp.register_socket(
+            &self.imp.inner.socket,
+            poll,
+            token,
+            interest,
+            opts,
+            &self.registration,
+        )?;
+        self.post_register(interest, &mut me);
+        Ok(())
+    }
+
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        let mut me = self.socket.inner;
+        me.iocp.reregister_socket(
+            &self.imp.inner.socket,
+            poll,
+            token,
+            interest,
+            opts,
+            &self.registration,
+        )?;
+        self.post_register(interest, &mut me);
+        Ok(())
+    }
+
+    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+        self.socket
+            .inner
+            .iocp
+            .deregister(&self.imp.inner.socket, poll, &self.registration)
+    }
+}

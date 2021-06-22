@@ -1,9 +1,8 @@
 use log::*;
-use mio::{Event, Evented, PollOpt};
+use mio::{Event, PollOpt};
 use mio::{Ready, Token};
 use socket2::Protocol;
-use socket2::SockAddr;
-use socket2::{Domain, Socket, Type};
+use socket2::{Domain, Type};
 use std::cell::RefCell;
 use std::io;
 use std::net::IpAddr;
@@ -13,8 +12,9 @@ use std::rc::Rc;
 use std::rc::Weak;
 use std::time::Instant;
 
-use super::connection::Connection;
 use super::{
+    connection::Connection,
+    socket::Socket,
     client::{Client, ClientChannel},
     connection::ConnectionId,
     datagram_buffer::DatagramBuffer,
@@ -82,7 +82,7 @@ impl IcmpConnection {
 
     fn create_socket(id: &ConnectionId) -> io::Result<Socket> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        let socket = Socket::new(Domain::IPV4, Type::RAW, Some(Protocol::ICMPV4))?;
+        let socket = Socket::new(Domain::IPV4, Type::RAW, Protocol::ICMPV4)?;
         socket.bind(&addr.into())?;
         socket.connect(&id.rewritten_destination().into())?;
         Ok(socket)
