@@ -22,6 +22,7 @@ use std::rc::{Rc, Weak};
 use super::binary;
 use super::client::{Client, ClientChannel};
 use super::connection::{Connection, ConnectionId};
+use super::icmp_connection::IcmpConnection;
 use super::ipv4_header::Protocol;
 use super::ipv4_packet::Ipv4Packet;
 use super::selector::Selector;
@@ -136,7 +137,13 @@ impl Router {
                 ipv4_header,
                 transport_header,
             )?),
-            Protocol::Icmp => Ok(()),
+            Protocol::Icmp => Ok(IcmpConnection::create(
+                selector,
+                id,
+                client,
+                ipv4_header,
+                transport_header,
+            )?),
             p => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("Unsupported protocol: {:?}", p),

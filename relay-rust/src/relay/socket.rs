@@ -15,10 +15,6 @@ impl Socket {
         Ok(Self { socket })
     }
 
-    pub fn send_to(&self, buf: &[u8], target: &SockAddr) -> io::Result<usize> {
-        self.socket.send_to(buf, target)
-    }
-
     pub fn recv(&self, buf: &mut [MaybeUninit<u8>]) -> io::Result<usize> {
         self.socket.recv(buf)
     }
@@ -34,12 +30,18 @@ impl Socket {
     fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.socket.send(buf)
     }
-
 }
 
-impl DatagramSender for Socket{
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize> { 
-        self.send(buf)
+impl DatagramSender for Socket {
+    fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (self as &Self).send(buf)
+    }
+}
+
+impl DatagramReceiver for Socket {
+    fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let buf = unsafe { &mut *(buf as *mut [u8] as *mut [MaybeUninit<u8>]) };
+        (self as &Self).recv(buf)
     }
 }
 
@@ -99,7 +101,7 @@ impl AsRawFd for Socket {
 #[cfg(windows)]
 use std::os::windows::io::{FromRawSocket, IntoRawSocket};
 
-use super::datagram::DatagramSender;
+use super::datagram::{DatagramReceiver, DatagramSender};
 
 #[cfg(windows)]
 impl Socket {

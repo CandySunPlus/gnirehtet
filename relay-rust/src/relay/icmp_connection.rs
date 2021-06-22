@@ -13,18 +13,18 @@ use std::rc::Weak;
 use std::time::Instant;
 
 use super::{
-    connection::Connection,
-    socket::Socket,
+    binary,
     client::{Client, ClientChannel},
+    connection::Connection,
     connection::ConnectionId,
     datagram_buffer::DatagramBuffer,
     ipv4_header::Ipv4Header,
     ipv4_packet::Ipv4Packet,
     packetizer::Packetizer,
     selector::Selector,
+    socket::Socket,
     transport_header::TransportHeader,
 };
-
 
 const TAG: &'static str = "IcmpConnection";
 const IDLE_TIMEOUT_SECONDS: u64 = 2;
@@ -97,7 +97,7 @@ impl IcmpConnection {
     fn on_ready(&mut self, selector: &mut Selector, event: Event) {
         match self.process(selector, event) {
             Ok(_) => (),
-            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 cx_debug!(target: TAG, self.id, "Spurious event, ignoring")
             }
             Err(_) => panic!("Unexpected unhandled error"),
@@ -109,12 +109,91 @@ impl IcmpConnection {
             self.touch();
             let ready = event.readiness();
             if ready.is_readable() || ready.is_writable() {
+                if ready.is_writable() {
+                    self.process_send(selector)?;
+                }
+                if !self.closed && ready.is_readable() {
+                    self.process_receive(selector)?;
+                }
+                if !self.closed {
+                    self.update_interests(selector);
+                }
             } else {
                 self.close(selector);
             }
             if self.closed {
                 self.remove_from_router();
             }
+        }
+        Ok(())
+    }
+
+    fn process_send(&mut self, selector: &mut Selector) -> io::Result<()> {
+        match self.write() {
+            Ok(_) => (),
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                cx_debug!(target: TAG, self.id, "Spurious event, ignoring");
+                return Err(err);
+            }
+            Err(err) => {
+                cx_error!(
+                    target: TAG,
+                    self.id,
+                    "Cannot write: [{:?}] {}",
+                    err.kind(),
+                    err
+                );
+                self.close(selector);
+            }
+        }
+        Ok(())
+    }
+
+    fn process_receive(&mut self, selector: &mut Selector) -> io::Result<()> {
+        match self.read(selector) {
+            Ok(_) => (),
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                return Err(err);
+            }
+            Err(err) => {
+                cx_error!(
+                    target: TAG,
+                    self.id,
+                    "Cannot read: [{:?}] {}",
+                    err.kind(),
+                    err
+                );
+                self.close(selector);
+            }
+        }
+        Ok(())
+    }
+
+    fn read(&mut self, selector: &mut Selector) -> io::Result<()> {
+        let ipv4_packet = self.network_to_client.packetize(&mut self.socket)?;
+        let client_rc = self.client.upgrade().expect("Expected client not found");
+
+        match client_rc
+            .borrow_mut()
+            .send_to_client(selector, &ipv4_packet)
+        {
+            Ok(_) => {
+                cx_debug!(
+                    target: TAG,
+                    self.id,
+                    "Packet ({} bytes) send to client",
+                    ipv4_packet.length()
+                );
+                if log_enabled!(target: TAG, Level::Trace) {
+                    cx_trace!(
+                        target: TAG,
+                        self.id,
+                        "{}",
+                        binary::build_packet_string(ipv4_packet.raw())
+                    );
+                }
+            }
+            Err(_) => cx_warn!(target: TAG, self.id, "Cannot send to client, drop packet"),
         }
         Ok(())
     }
@@ -134,7 +213,7 @@ impl IcmpConnection {
         if self.interests != ready {
             self.interests = ready;
             selector
-                .register(&self.socket, self.token, ready, PollOpt::level())
+                .reregister(&self.socket, self.token, ready, PollOpt::level())
                 .expect("Cannot register on poll");
         }
     }
@@ -160,7 +239,7 @@ impl Connection for IcmpConnection {
             .read_from(ipv4_packet.payload().expect("No payload"))
         {
             Ok(_) => {
-                todo!();
+                self.update_interests(selector);
             }
             Err(err) => cx_warn!(
                 target: TAG,
