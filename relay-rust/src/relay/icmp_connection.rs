@@ -198,7 +198,7 @@ impl IcmpConnection {
                     cx_trace!(
                         target: TAG,
                         self.id,
-                        "{}",
+                        "send to client: {}",
                         binary::build_packet_string(ipv4_packet.raw())
                     );
                 }
