@@ -313,10 +313,11 @@ impl Client {
                 );
                 trace!(
                     target: TAG,
-                    "push packet to network: {}, length {}, header {:?}",
+                    "push packet to network: {}, packet length {}, ip header length: {}, transport header length: {}",
                     self.id,
                     packet.length(),
-                    packet.transport_header()
+                    packet.ipv4_header_data().header_length(),
+                    packet.transport_header().unwrap().header_length()
                 );
                 self.router
                     .send_to_network(selector, &mut client_channel, packet);

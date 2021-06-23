@@ -18,7 +18,7 @@ use byteorder::{BigEndian, ByteOrder};
 use std::cmp::min;
 use std::fmt::Write;
 
-const MAX_STRING_PACKET_SIZE: usize = 20;
+const MAX_STRING_PACKET_SIZE: usize = 24;
 
 pub fn to_byte_array(value: u32) -> [u8; 4] {
     let mut raw = [0u8; 4];

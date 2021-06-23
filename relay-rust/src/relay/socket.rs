@@ -3,20 +3,21 @@ use log::*;
 use mio::{Evented, Poll, PollOpt, Ready, Token};
 use std::{io, mem::MaybeUninit};
 
+use super::binary;
 use super::datagram::DatagramReceiver;
-use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 #[derive(Debug)]
-pub struct Socket {
-    socket: Socket2,
+pub struct IcmpSocket {
+    socket: Socket,
 }
 
 const TAG: &'static str = "ICMP_SOCKET";
 
-impl Socket {
+impl IcmpSocket {
     pub fn new(domain: Domain, ty: Type, protocol: Protocol) -> io::Result<Self> {
         debug!(target: TAG, "info: {:?}, {:?}, {:?}", domain, ty, protocol);
-        let socket = Socket2::new(domain, ty, Some(protocol)).map_err(|err| {
+        let socket = Socket::new(domain, ty, Some(protocol)).map_err(|err| {
             debug!(target: TAG, "create icmp socket error: {:?}", err);
             err
         })?;
@@ -43,28 +44,33 @@ impl Socket {
     }
 }
 
-impl DatagramReceiver for Socket {
+impl DatagramReceiver for IcmpSocket {
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let buf = unsafe { &mut *(buf as *mut [u8] as *mut [MaybeUninit<u8>]) };
         self.socket.recv(buf)
     }
 }
 
-impl Read for Socket {
+impl Read for IcmpSocket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.socket.read(buf)
     }
 }
 
-impl<'a> Read for &'a Socket {
+impl<'a> Read for &'a IcmpSocket {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         (&self.socket).read(buf)
     }
 }
 
-impl Write for Socket {
+impl Write for IcmpSocket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.socket.write(buf)
+        debug!(
+            target: TAG,
+            "send payload {}",
+            binary::build_packet_string(buf)
+        );
+        self.send(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -72,9 +78,14 @@ impl Write for Socket {
     }
 }
 
-impl<'a> Write for &'a Socket {
+impl<'a> Write for &'a IcmpSocket {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (&self.socket).write(buf)
+        debug!(
+            target: TAG,
+            "send payload {}",
+            binary::build_packet_string(buf)
+        );
+        (&self).send(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -88,7 +99,7 @@ use mio::unix::EventedFd;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
-impl Evented for Socket {
+impl Evented for IcmpSocket {
     fn register(
         &self,
         poll: &Poll,
@@ -113,23 +124,23 @@ impl Evented for Socket {
 }
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
-impl FromRawFd for Socket {
-    unsafe fn from_raw_fd(fd: RawFd) -> Socket {
-        Socket {
-            socket: Socket2::from_raw_fd(fd),
+impl FromRawFd for IcmpSocket {
+    unsafe fn from_raw_fd(fd: RawFd) -> IcmpSocket {
+        IcmpSocket {
+            socket: Socket::from_raw_fd(fd),
         }
     }
 }
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
-impl IntoRawFd for Socket {
+impl IntoRawFd for IcmpSocket {
     fn into_raw_fd(self) -> RawFd {
         self.socket.into_raw_fd()
     }
 }
 
 #[cfg(all(unix, not(target_os = "fuchsia")))]
-impl AsRawFd for Socket {
+impl AsRawFd for IcmpSocket {
     fn as_raw_fd(&self) -> RawFd {
         self.socket.as_raw_fd()
     }
@@ -139,7 +150,7 @@ impl AsRawFd for Socket {
 use std::os::windows::io::{FromRawSocket, IntoRawSocket};
 
 #[cfg(windows)]
-impl Socket {
+impl IcmpSocket {
     fn post_register(&self, interest: Ready, me: &mut Inner) {
         if interest.is_readable() {
             //We use recv_from here since it is well specified for both
@@ -157,7 +168,7 @@ impl Socket {
 }
 
 #[cfg(windows)]
-impl Evented for Socket {
+impl Evented for IcmpSocket {
     fn register(
         &self,
         poll: &Poll,

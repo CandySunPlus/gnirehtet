@@ -15,11 +15,11 @@ pub struct IcmpHeaderMut<'a> {
     data: &'a mut IcmpHeaderData,
 }
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct IcmpHeaderData {
     icmp_type: u8,
     icmp_code: u8,
+    checksum: u16,
 }
 
 #[allow(dead_code)]
@@ -28,6 +28,7 @@ impl IcmpHeaderData {
         Self {
             icmp_type: raw[0],
             icmp_code: raw[1],
+            checksum: BigEndian::read_u16(&raw[2..4]),
         }
     }
 
@@ -110,12 +111,32 @@ impl<'a> IcmpHeaderMut<'a> {
         self.raw[1] = icmp_code;
     }
 
+    #[inline]
     fn set_checksum(&mut self, checksum: u16) {
-        BigEndian::write_u16(&mut self.raw[1..3], checksum);
+        BigEndian::write_u16(&mut self.raw[2..4], checksum);
     }
 
-    pub fn update_checksum(&mut self, _ipv4_header_data: &Ipv4HeaderData, _payload: &[u8]) {
+    #[inline]
+    pub fn update_checksum(&mut self, ipv4_header_data: &Ipv4HeaderData, payload: &[u8]) {
         self.set_checksum(0);
+        let transport_length =
+            ipv4_header_data.total_length() - u16::from(ipv4_header_data.header_length());
+        let end = transport_length as usize / 2;
+
+        let mut sum = 0u32;
+        let data = &[self.raw, payload].concat()[..];
+
+        sum += (0..end)
+            .map(|i| {
+                let range = 2 * i..2 * (i + 1);
+                u32::from(BigEndian::read_u16(&data[range]))
+            })
+            .sum::<u32>();
+
+        while (sum & !0xffff) != 0 {
+            sum = (sum & 0xffff) + (sum >> 16);
+        }
+        self.set_checksum(!sum as u16);
     }
 }
 

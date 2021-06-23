@@ -22,7 +22,7 @@ use super::{
     ipv4_packet::MAX_PACKET_LENGTH,
     packetizer::Packetizer,
     selector::Selector,
-    socket::Socket,
+    socket::IcmpSocket,
     stream_buffer::StreamBuffer,
     transport_header::TransportHeader,
 };
@@ -34,7 +34,7 @@ pub struct IcmpConnection {
     id: ConnectionId,
     client: Weak<RefCell<Client>>,
     interests: Ready,
-    socket: Socket,
+    socket: IcmpSocket,
     token: Token,
     client_to_network: StreamBuffer,
     network_to_client: Packetizer,
@@ -72,7 +72,7 @@ impl IcmpConnection {
             let mut self_ref = rc.borrow_mut();
 
             let rc2 = rc.clone();
-            // must anotate selector type: https://stackoverflow.com/a/44004103/1987178
+            // must annotate selector type: https://stackoverflow.com/a/44004103/1987178
             let handler =
                 move |selector: &mut Selector, event| rc2.borrow_mut().on_ready(selector, event);
             let token =
@@ -82,9 +82,9 @@ impl IcmpConnection {
         Ok(rc)
     }
 
-    fn create_socket(id: &ConnectionId) -> io::Result<Socket> {
+    fn create_socket(id: &ConnectionId) -> io::Result<IcmpSocket> {
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        let socket = Socket::new(Domain::IPV4, Type::RAW, Protocol::ICMPV4)?;
+        let socket = IcmpSocket::new(Domain::IPV4, Type::RAW, Protocol::ICMPV4)?;
         socket.bind(&addr.into())?;
         socket.connect(&id.rewritten_destination().into())?;
         Ok(socket)
@@ -99,7 +99,7 @@ impl IcmpConnection {
     fn on_ready(&mut self, selector: &mut Selector, event: Event) {
         match self.process(selector, event) {
             Ok(_) => (),
-            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
                 cx_debug!(target: TAG, self.id, "Spurious event, ignoring")
             }
             Err(_) => panic!("Unexpected unhandled error"),
@@ -110,12 +110,19 @@ impl IcmpConnection {
         if !self.closed {
             self.touch();
             let ready = event.readiness();
+            cx_debug!(
+                target: TAG,
+                self.id,
+                "connection in process R:{}::W:{}::C:{}",
+                ready.is_readable(),
+                ready.is_writable(),
+                self.closed
+            );
             if ready.is_readable() || ready.is_writable() {
                 if ready.is_writable() {
                     self.process_send(selector)?;
                 }
                 if !self.closed && ready.is_readable() {
-                    cx_debug!(target: TAG, self.id, "in write mode .............");
                     self.process_receive(selector)?;
                 }
                 if !self.closed {
@@ -212,8 +219,14 @@ impl IcmpConnection {
         } else {
             Ready::readable() | Ready::writable()
         };
-        cx_debug!(target: TAG, self.id, "interests: {:?}", ready);
         if self.interests != ready {
+            cx_debug!(
+                target: TAG,
+                self.id,
+                "set interests from {:?} to {:?}",
+                self.interests,
+                ready
+            );
             self.interests = ready;
             selector
                 .reregister(&self.socket, self.token, ready, PollOpt::level())
@@ -238,8 +251,17 @@ impl Connection for IcmpConnection {
         ipv4_packet: &Ipv4Packet,
     ) {
         if ipv4_packet.length() as usize <= self.client_to_network.remaining() {
-            self.client_to_network
-                .read_from(ipv4_packet.payload().expect("No Payload"));
+            let ipv4_header_length = ipv4_packet.ipv4_header_data().header_length() as usize;
+            let raw = ipv4_packet.raw();
+            let transport_raw = &raw[ipv4_header_length..];
+            cx_trace!(
+                target: TAG,
+                self.id,
+                "send to network {}",
+                binary::build_packet_string(transport_raw)
+            );
+
+            self.client_to_network.read_from(transport_raw);
             self.update_interests(selector);
         } else {
             cx_warn!(target: TAG, self.id, "Cannot send to network, drop packet")
