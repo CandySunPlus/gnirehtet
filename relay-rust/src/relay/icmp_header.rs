@@ -3,17 +3,20 @@ use byteorder::{BigEndian, ByteOrder};
 
 pub const ICMP_HEADER_LENGTH: u8 = 4;
 
+#[derive(Debug)]
 pub struct IcmpHeader<'a> {
     raw: &'a [u8],
     data: &'a IcmpHeaderData,
 }
 
+#[derive(Debug)]
 pub struct IcmpHeaderMut<'a> {
     raw: &'a mut [u8],
     data: &'a mut IcmpHeaderData,
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct IcmpHeaderData {
     icmp_type: u8,
     icmp_code: u8,

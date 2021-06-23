@@ -17,12 +17,13 @@ use super::{
     client::{Client, ClientChannel},
     connection::Connection,
     connection::ConnectionId,
-    datagram_buffer::DatagramBuffer,
     ipv4_header::Ipv4Header,
     ipv4_packet::Ipv4Packet,
+    ipv4_packet::MAX_PACKET_LENGTH,
     packetizer::Packetizer,
     selector::Selector,
     socket::Socket,
+    stream_buffer::StreamBuffer,
     transport_header::TransportHeader,
 };
 
@@ -35,7 +36,7 @@ pub struct IcmpConnection {
     interests: Ready,
     socket: Socket,
     token: Token,
-    client_to_network: DatagramBuffer,
+    client_to_network: StreamBuffer,
     network_to_client: Packetizer,
     closed: bool,
     idle_since: Instant,
@@ -50,6 +51,7 @@ impl IcmpConnection {
         transport_header: TransportHeader,
     ) -> io::Result<Rc<RefCell<Self>>> {
         cx_info!(target: TAG, id, "Open");
+
         let interests = Ready::readable();
         let packetizer = Packetizer::new(&ipv4_header, &transport_header);
         let socket = Self::create_socket(&id)?;
@@ -60,7 +62,7 @@ impl IcmpConnection {
             interests,
             socket,
             token: Token(0),
-            client_to_network: DatagramBuffer::new(4),
+            client_to_network: StreamBuffer::new(MAX_PACKET_LENGTH),
             network_to_client: packetizer,
             closed: false,
             idle_since: Instant::now(),
@@ -113,6 +115,7 @@ impl IcmpConnection {
                     self.process_send(selector)?;
                 }
                 if !self.closed && ready.is_readable() {
+                    cx_debug!(target: TAG, self.id, "in write mode .............");
                     self.process_receive(selector)?;
                 }
                 if !self.closed {
@@ -234,19 +237,12 @@ impl Connection for IcmpConnection {
         _: &mut ClientChannel,
         ipv4_packet: &Ipv4Packet,
     ) {
-        match self
-            .client_to_network
-            .read_from(ipv4_packet.payload().expect("No payload"))
-        {
-            Ok(_) => {
-                self.update_interests(selector);
-            }
-            Err(err) => cx_warn!(
-                target: TAG,
-                self.id,
-                "Cannot send to network, drop packet: {}",
-                err
-            ),
+        if ipv4_packet.length() as usize <= self.client_to_network.remaining() {
+            self.client_to_network
+                .read_from(ipv4_packet.payload().expect("No Payload"));
+            self.update_interests(selector);
+        } else {
+            cx_warn!(target: TAG, self.id, "Cannot send to network, drop packet")
         }
     }
 

@@ -20,6 +20,7 @@ use std::mem;
 
 pub const UDP_HEADER_LENGTH: u8 = 8;
 
+#[derive(Debug)]
 pub struct UdpHeader<'a> {
     raw: &'a [u8],
     data: &'a UdpHeaderData,
@@ -31,6 +32,7 @@ pub struct UdpHeaderMut<'a> {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct UdpHeaderData {
     source_port: u16,
     destination_port: u16,

@@ -1,14 +1,25 @@
+use io::{Read, Write};
+use log::*;
 use mio::{Evented, Poll, PollOpt, Ready, Token};
 use std::{io, mem::MaybeUninit};
 
+use super::datagram::DatagramReceiver;
 use socket2::{Domain, Protocol, SockAddr, Socket as Socket2, Type};
 
+#[derive(Debug)]
 pub struct Socket {
     socket: Socket2,
 }
+
+const TAG: &'static str = "ICMP_SOCKET";
+
 impl Socket {
     pub fn new(domain: Domain, ty: Type, protocol: Protocol) -> io::Result<Self> {
-        let socket = Socket2::new(domain, ty, Some(protocol))?;
+        debug!(target: TAG, "info: {:?}, {:?}, {:?}", domain, ty, protocol);
+        let socket = Socket2::new(domain, ty, Some(protocol)).map_err(|err| {
+            debug!(target: TAG, "create icmp socket error: {:?}", err);
+            err
+        })?;
 
         socket.set_nonblocking(true)?;
 
@@ -27,21 +38,47 @@ impl Socket {
         self.socket.connect(addr)
     }
 
-    fn send(&self, buf: &[u8]) -> io::Result<usize> {
+    pub fn send(&self, buf: &[u8]) -> io::Result<usize> {
         self.socket.send(buf)
-    }
-}
-
-impl DatagramSender for Socket {
-    fn send(&mut self, buf: &[u8]) -> io::Result<usize> {
-        (self as &Self).send(buf)
     }
 }
 
 impl DatagramReceiver for Socket {
     fn recv(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let buf = unsafe { &mut *(buf as *mut [u8] as *mut [MaybeUninit<u8>]) };
-        (self as &Self).recv(buf)
+        self.socket.recv(buf)
+    }
+}
+
+impl Read for Socket {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.socket.read(buf)
+    }
+}
+
+impl<'a> Read for &'a Socket {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        (&self.socket).read(buf)
+    }
+}
+
+impl Write for Socket {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.socket.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.socket.flush()
+    }
+}
+
+impl<'a> Write for &'a Socket {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&self.socket).write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        (&self.socket).flush()
     }
 }
 
@@ -100,8 +137,6 @@ impl AsRawFd for Socket {
 
 #[cfg(windows)]
 use std::os::windows::io::{FromRawSocket, IntoRawSocket};
-
-use super::datagram::{DatagramReceiver, DatagramSender};
 
 #[cfg(windows)]
 impl Socket {

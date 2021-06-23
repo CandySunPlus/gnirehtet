@@ -311,6 +311,13 @@ impl Client {
                     self.token,
                     &mut self.interests,
                 );
+                trace!(
+                    target: TAG,
+                    "push packet to network: {}, length {}, header {:?}",
+                    self.id,
+                    packet.length(),
+                    packet.transport_header()
+                );
                 self.router
                     .send_to_network(selector, &mut client_channel, packet);
                 true

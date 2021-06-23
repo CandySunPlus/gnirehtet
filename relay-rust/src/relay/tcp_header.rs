@@ -18,6 +18,7 @@ use super::ipv4_header::Ipv4HeaderData;
 use byteorder::{BigEndian, ByteOrder};
 use std::mem;
 
+#[derive(Debug)]
 pub struct TcpHeader<'a> {
     raw: &'a [u8],
     data: &'a TcpHeaderData,
@@ -29,6 +30,7 @@ pub struct TcpHeaderMut<'a> {
 }
 
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct TcpHeaderData {
     source_port: u16,
     destination_port: u16,
