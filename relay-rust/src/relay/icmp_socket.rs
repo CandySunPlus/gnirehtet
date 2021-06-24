@@ -14,7 +14,7 @@ use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use mio::Evented;
+use mio::{Evented, Poll, PollOpt, Ready, Token};
 use socket2::Domain;
 use socket2::Protocol;
 use socket2::Socket;
@@ -68,7 +68,6 @@ impl Read for IcmpSocket {
 
 #[cfg(unix)]
 use mio::unix::EventedFd;
-use mio::Poll;
 #[cfg(windows)]
 use miow::iocp::{CompletionPort, CompletionStatus};
 #[cfg(unix)]
@@ -83,9 +82,9 @@ impl Evented for IcmpSocket {
     fn register(
         &self,
         poll: &Poll,
-        token: mio::Token,
-        interest: mio::Ready,
-        opts: mio::PollOpt,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
     ) -> io::Result<()> {
         self.1.associate_selector(poll)?;
         EventedFd(&self.0.as_raw_fd()).register(poll, token, interest, opts)
@@ -93,14 +92,63 @@ impl Evented for IcmpSocket {
     fn reregister(
         &self,
         poll: &Poll,
-        token: mio::Token,
-        interest: mio::Ready,
-        opts: mio::PollOpt,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
     ) -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).reregister(poll, token, interest, opts)
     }
     fn deregister(&self, poll: &Poll) -> io::Result<()> {
         EventedFd(&self.0.as_raw_fd()).deregister(poll)
+    }
+}
+
+#[cfg(windows)]
+impl Evented for IcmpSocket {
+    fn register(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        let mut me = self.inner();
+        me.iocp.register_socket(
+            &self.imp.inner.socket,
+            poll,
+            token,
+            interest,
+            opts,
+            &self.registration,
+        )?;
+        self.post_register(interest, &mut me);
+        Ok(())
+    }
+
+    fn reregister(
+        &self,
+        poll: &Poll,
+        token: Token,
+        interest: Ready,
+        opts: PollOpt,
+    ) -> io::Result<()> {
+        let mut me = self.inner();
+        me.iocp.reregister_socket(
+            &self.imp.inner.socket,
+            poll,
+            token,
+            interest,
+            opts,
+            &self.registration,
+        )?;
+        self.post_register(interest, &mut me);
+        Ok(())
+    }
+
+    fn deregister(&self, poll: &Poll) -> io::Result<()> {
+        self.inner()
+            .iocp
+            .deregister(&self.imp.inner.socket, poll, &self.registration)
     }
 }
 
@@ -113,7 +161,6 @@ impl Evented for IcmpSocket {
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-
 #[allow(dead_code)]
 struct Selector {
     id: usize,
