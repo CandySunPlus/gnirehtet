@@ -126,6 +126,7 @@ struct Selector {
     target_os = "linux",
     target_os = "solaris"
 ))]
+#[allow(dead_code)]
 struct Selector {
     id: usize,
     epfd: RawFd,
