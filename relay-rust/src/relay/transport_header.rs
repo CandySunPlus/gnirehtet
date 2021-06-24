@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use super::icmp_header::{IcmpHeader, IcmpHeaderData, IcmpHeaderMut, ICMP_HEADER_LENGTH};
+use super::icmp_header::{IcmpHeader, IcmpHeaderData, IcmpHeaderMut};
 use super::ipv4_header::{Ipv4HeaderData, Protocol};
 use super::tcp_header::{TcpHeader, TcpHeaderData, TcpHeaderMut};
 use super::udp_header::{UdpHeader, UdpHeaderData, UdpHeaderMut, UDP_HEADER_LENGTH};
@@ -83,7 +83,7 @@ impl TransportHeaderData {
         match *self {
             TransportHeaderData::Tcp(ref tcp_header_data) => tcp_header_data.header_length(),
             TransportHeaderData::Udp(_) => UDP_HEADER_LENGTH,
-            TransportHeaderData::Icmp(_) => ICMP_HEADER_LENGTH,
+            TransportHeaderData::Icmp(_) => 0,
         }
     }
 }
@@ -161,7 +161,7 @@ macro_rules! transport_header_common {
                 match *self {
                     $name::Tcp(ref tcp_header) => tcp_header.data().header_length(),
                     $name::Udp(_) => UDP_HEADER_LENGTH,
-                    $name::Icmp(_) => ICMP_HEADER_LENGTH,
+                    $name::Icmp(_) => 0,
                 }
             }
         }
@@ -216,9 +216,7 @@ impl<'a> TransportHeaderMut<'a> {
             TransportHeaderMut::Udp(ref mut udp_header) => {
                 udp_header.update_checksum(ipv4_header_data, payload)
             }
-            TransportHeaderMut::Icmp(ref mut icmp_header) => {
-                icmp_header.update_checksum(ipv4_header_data, payload)
-            }
+            TransportHeaderMut::Icmp(_) => (), // ICPM
         }
     }
 }

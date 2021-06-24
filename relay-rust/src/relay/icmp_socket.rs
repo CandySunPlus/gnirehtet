@@ -113,6 +113,8 @@ impl Evented for IcmpSocket {
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
+
+#[allow(dead_code)]
 struct Selector {
     id: usize,
     kq: RawFd,

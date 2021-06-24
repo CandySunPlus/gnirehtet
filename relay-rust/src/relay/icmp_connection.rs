@@ -1,13 +1,9 @@
 use log::*;
 use mio::{Event, PollOpt};
 use mio::{Ready, Token};
-use socket2::Protocol;
-use socket2::{Domain, Type};
 use std::cell::RefCell;
 use std::io;
 use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::time::Instant;
@@ -17,12 +13,12 @@ use super::{
     client::{Client, ClientChannel},
     connection::Connection,
     connection::ConnectionId,
+    icmp_socket::IcmpSocket,
     ipv4_header::Ipv4Header,
     ipv4_packet::Ipv4Packet,
     ipv4_packet::MAX_PACKET_LENGTH,
     packetizer::Packetizer,
     selector::Selector,
-    socket::IcmpSocket,
     stream_buffer::StreamBuffer,
     transport_header::TransportHeader,
 };
@@ -83,9 +79,11 @@ impl IcmpConnection {
     }
 
     fn create_socket(id: &ConnectionId) -> io::Result<IcmpSocket> {
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-        let socket = IcmpSocket::new(Domain::IPV4, Type::RAW, Protocol::ICMPV4)?;
-        socket.bind(&addr.into())?;
+        let socket = IcmpSocket::bind(
+            "0.0.0.0"
+                .parse::<IpAddr>()
+                .expect("IP address parse failed"),
+        )?;
         socket.connect(&id.rewritten_destination().into())?;
         Ok(socket)
     }
@@ -145,7 +143,7 @@ impl IcmpConnection {
                 cx_debug!(target: TAG, self.id, "Spurious event, ignoring");
                 return Err(err);
             }
-            Err(err) => {
+            Err(ref err) => {
                 cx_error!(
                     target: TAG,
                     self.id,
@@ -165,7 +163,7 @@ impl IcmpConnection {
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                 return Err(err);
             }
-            Err(err) => {
+            Err(ref err) => {
                 cx_error!(
                     target: TAG,
                     self.id,
@@ -180,7 +178,10 @@ impl IcmpConnection {
     }
 
     fn read(&mut self, selector: &mut Selector) -> io::Result<()> {
-        let ipv4_packet = self.network_to_client.packetize(&mut self.socket)?;
+        let ipv4_packet = self
+            .network_to_client
+            .packetize_read(&mut self.socket, None)?
+            .expect("Packetzer reader failed");
         let client_rc = self.client.upgrade().expect("Expected client not found");
 
         match client_rc
@@ -251,17 +252,14 @@ impl Connection for IcmpConnection {
         ipv4_packet: &Ipv4Packet,
     ) {
         if ipv4_packet.length() as usize <= self.client_to_network.remaining() {
-            let ipv4_header_length = ipv4_packet.ipv4_header_data().header_length() as usize;
-            let raw = ipv4_packet.raw();
-            let transport_raw = &raw[ipv4_header_length..];
+            let payload = ipv4_packet.payload().expect("No Payload");
             cx_trace!(
                 target: TAG,
                 self.id,
                 "send to network {}",
-                binary::build_packet_string(transport_raw)
+                binary::build_packet_string(payload)
             );
-
-            self.client_to_network.read_from(transport_raw);
+            self.client_to_network.read_from(payload);
             self.update_interests(selector);
         } else {
             cx_warn!(target: TAG, self.id, "Cannot send to network, drop packet")

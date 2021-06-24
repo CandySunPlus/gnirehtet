@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
+use log::*;
 use std::io;
 
+use super::binary;
 use super::datagram::{DatagramReceiver, ReadAdapter};
 use super::ipv4_header::{Ipv4Header, Ipv4HeaderData, Ipv4HeaderMut};
 use super::ipv4_packet::{Ipv4Packet, MAX_PACKET_LENGTH};
@@ -72,6 +74,7 @@ impl Packetizer {
 
     pub fn packetize<R: DatagramReceiver>(&mut self, source: &mut R) -> io::Result<Ipv4Packet> {
         let r = source.recv(&mut self.buffer[self.payload_index..])?;
+        debug!(target: "PACK", "payload index {}, length {}, raw: {}", self.payload_index, r, binary::build_packet_string(&self.buffer[self.payload_index..]));
         let ipv4_packet = self.build(r as u16);
         Ok(ipv4_packet)
     }
@@ -88,6 +91,7 @@ impl Packetizer {
     ) -> io::Result<Option<Ipv4Packet>> {
         let mut adapter = ReadAdapter::new(source, max_chunk_size);
         let r = adapter.recv(&mut self.buffer[self.payload_index..])?;
+        debug!(target: "PACK", "payload index {}, length {}, raw: {}", self.payload_index, r, binary::build_packet_string(&self.buffer[self.payload_index..]));
         let option = if r > 0 {
             let ipv4_packet = self.build(r as u16);
             Some(ipv4_packet)

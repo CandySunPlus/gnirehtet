@@ -123,20 +123,20 @@ impl Router {
         let (ipv4_header, transport_header) = ipv4_packet.headers();
         let transport_header = transport_header.expect("No transport");
         match id.protocol() {
-            // Protocol::Tcp => Ok(TcpConnection::create(
-            //     selector,
-            //     id,
-            //     client,
-            //     ipv4_header,
-            //     transport_header,
-            // )?),
-            // Protocol::Udp => Ok(UdpConnection::create(
-            //     selector,
-            //     id,
-            //     client,
-            //     ipv4_header,
-            //     transport_header,
-            // )?),
+            Protocol::Tcp => Ok(TcpConnection::create(
+                selector,
+                id,
+                client,
+                ipv4_header,
+                transport_header,
+            )?),
+            Protocol::Udp => Ok(UdpConnection::create(
+                selector,
+                id,
+                client,
+                ipv4_header,
+                transport_header,
+            )?),
             Protocol::Icmp => Ok(IcmpConnection::create(
                 selector,
                 id,
