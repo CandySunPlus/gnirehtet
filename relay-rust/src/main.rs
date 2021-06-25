@@ -402,38 +402,40 @@ fn cmd_autorun(
     cmd_relay(port)
 }
 
+#[allow(unused_variables)]
 fn cmd_start(
     serial: Option<&str>,
     dns_servers: Option<&str>,
     routes: Option<&str>,
     port: u16,
 ) -> Result<(), CommandExecutionError> {
-    if must_install_client(serial)? {
-        cmd_install(serial)?;
-        // wait a bit after the app is installed so that intent actions are correctly
-        // registered
-        thread::sleep(Duration::from_millis(500));
-    }
+    // if must_install_client(serial)? {
+    //     cmd_install(serial)?;
+    //     // wait a bit after the app is installed so that intent actions are correctly
+    //     // registered
+    //     thread::sleep(Duration::from_millis(500));
+    // }
 
+    // only open the tunnel
     info!(target: TAG, "Starting client...");
-    cmd_tunnel(serial, port)?;
+    cmd_tunnel(serial, port)
 
-    let mut adb_args = vec![
-        "shell",
-        "am",
-        "start",
-        "-a",
-        "com.genymobile.gnirehtet.START",
-        "-n",
-        "com.genymobile.gnirehtet/.GnirehtetActivity",
-    ];
-    if let Some(dns_servers) = dns_servers {
-        adb_args.append(&mut vec!["--esa", "dnsServers", dns_servers]);
-    }
-    if let Some(routes) = routes {
-        adb_args.append(&mut vec!["--esa", "routes", routes]);
-    }
-    exec_adb(serial, adb_args)
+    // let mut adb_args = vec![
+    //     "shell",
+    //     "am",
+    //     "start",
+    //     "-a",
+    //     "com.genymobile.gnirehtet.START",
+    //     "-n",
+    //     "com.genymobile.gnirehtet/.GnirehtetActivity",
+    // ];
+    // if let Some(dns_servers) = dns_servers {
+    //     adb_args.append(&mut vec!["--esa", "dnsServers", dns_servers]);
+    // }
+    // if let Some(routes) = routes {
+    //     adb_args.append(&mut vec!["--esa", "routes", routes]);
+    // }
+    // exec_adb(serial, adb_args)
 }
 
 fn cmd_autostart(
@@ -534,6 +536,7 @@ fn exec_adb<S: Into<String>>(
     }
 }
 
+#[allow(dead_code)]
 fn must_install_client(serial: Option<&str>) -> Result<bool, CommandExecutionError> {
     info!(target: TAG, "Checking gnirehtet client...");
     let args = create_adb_args(
