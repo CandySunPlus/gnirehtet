@@ -1,14 +1,14 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
 ext {
-    compileSdkVersion = 29
-    buildToolsVersion = "29.0.2"
+    compileSdkVersion = 30
+    buildToolsVersion = "30.0.3"
 }
 
 buildscript {
     repositories {
-        jcenter()
         google()
+        jcenter()
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:4.1.3'
@@ -20,8 +20,8 @@ buildscript {
 
 allprojects {
     repositories {
-        jcenter()
         google()
+        jcenter()
     }
 }
 
@@ -29,17 +29,3 @@ task clean(type: Delete) {
     delete rootProject.buildDir
 }
 
-task debugJava(dependsOn: [':app:assembleDebug', ':relay-java:assembleDebug'])
-task releaseJava(dependsOn: [':app:assembleRelease', ':relay-java:assembleRelease'])
-
-task debugRust(dependsOn: [':app:assembleDebug', ':relay-rust:debug'])
-task releaseRust(dependsOn: [':app:assembleRelease', ':relay-rust:release'])
-
-task releaseRustWindows(dependsOn: [':app:assembleRelease', 'relay-rust:releaseCrossToWindows'])
-
-task debugAll(dependsOn: ['debugJava', 'debugRust'])
-task releaseAll(dependsOn: ['releaseJava', 'releaseRust'])
-
-task checkJava(dependsOn: [':app:check', ':relay-java:check'])
-task checkRust(dependsOn: ['app:check', ':relay-rust:check'])
-task checkAll(dependsOn: ['checkJava', 'checkRust'])
