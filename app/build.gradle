@@ -7,7 +7,7 @@ android {
     defaultConfig {
         archivesBaseName = "gnirehtet" // change apk name
         applicationId "com.genymobile.gnirehtet"
-        minSdkVersion 24
+        minSdkVersion 23
         targetSdkVersion 30
         versionCode 8
         versionName "2.5"
