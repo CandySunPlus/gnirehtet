@@ -31,7 +31,7 @@ use crate::execution_error::{Cmd, CommandExecutionError, ProcessIoError, Process
 use std::env;
 use std::process::{self, exit};
 use std::thread;
-use std::time::Duration;
+// use std::time::Duration;
 
 const TAG: &str = "Main";
 const REQUIRED_APK_VERSION_CODE: &str = "8";

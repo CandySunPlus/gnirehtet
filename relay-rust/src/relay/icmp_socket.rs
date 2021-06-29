@@ -5,7 +5,6 @@ use std::intrinsics::transmute;
  *
  * only impl ICMP_ECHO and ICMP_ECHO_REPLY methods .
  *
- * use SOCK_DGRAM to build ICMP packets for non root user.
  */
 use std::io;
 use std::io::Read;
@@ -30,7 +29,7 @@ impl IcmpSocket {
         };
         Socket::new(
             Domain::for_address(SocketAddr::new(ip, 0)),
-            Type::DGRAM,
+            Type::RAW,
             protocol,
         )
         .map(|socket| {
